@@ -4,3 +4,4 @@ Repository for the first of project of Image and Video Analysis (G.E.E.T. 4th ye
 installed
 - pip install caer
 - pip install opencv-contrib-python
+- pip install scikit-image
