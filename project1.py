@@ -164,10 +164,6 @@ cv.waitKey(0)
 
 cv.destroyAllWindows()
 
-# Ajusta automáticamente el espacio entre subplots
-plt.tight_layout()
-# Muestra la figura con todas las imágenes
-plt.show()
 
 #Making the histogram
 img_descriptor_list = cv.calcHist(cropped_img, channels, None, histSize, ranges, accumulate=False)
