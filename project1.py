@@ -1,19 +1,30 @@
-import cv2 as cv
-import numpy as np
+cuando trabajes avisa hahaha
+
+import cv2 
 import sys
-import skimage
-from functools import partial  
-from skimage import filters
-import math
-import pandas as pn
-from matplotlib import pyplot as plt
+import numpy as np
+from functools import partial # This is needed to pass the original image to the Callback function (createTrackbar)
+
+# Global variables (be careful because variables in this list are used in the functions, 
+# so these functions can not be copied to another program as they are here...you would need to modify them)
 
 
+window_name = "Edge Map"
 standard_name = "Standard Hough Lines Demo"
 probabilistic_name = "Probabilistic Hough Lines Demo"
-min_threshold = 10
-max_trackbar = 170
+min_threshold = 30
+max_trackbar = 150
+s_trackbar = 0
+p_trackbar = 0
+
+edgeThresh = 1
+lowThreshold = 30
+max_lowThreshold = 100
+multiplier = 3
+kernel_size = 3
 alpha = 1000
+
+
 
 
 h_bins = 30
@@ -26,39 +37,69 @@ ranges = h_ranges + s_ranges # concat lists
 # Use the 0-th and 1-st channels
 channels = [0, 2]
 
+#
+# * @function CannyThreshold
+# * @brief Trackbar callback - Canny thresholds input with a ratio 1:3
+#
 
-def recortar_areas_negras(imagen):
-    # Convierte la imagen a escala de grises
-    img_gray = cv.cvtColor(imagen, cv.COLOR_BGR2GRAY)
+def CannyThreshold(lowThreshold, a):
+    global edges
+    src_gray = cv2.cvtColor(a , cv2.COLOR_BGR2GRAY)
+    # Reduce noise with a kernel 5x5
+    blurred = cv2.blur(src_gray, (5, 5))
+    # Canny detector
+    edges = cv2.Canny(blurred, lowThreshold, lowThreshold*multiplier, kernel_size)
+    Mask = edges/255
+    # Using Canny's output as a mask, we display our result
+    dst = a * (Mask[:,:,None].astype(a.dtype))
+    cv2.imshow(window_name, dst)
 
-    # Define un umbral para detectar píxeles negros
-    threshold_value = 10  # Ajusta este valor según tu imagen
-    _, binary_mask = cv.threshold(img_gray, threshold_value, 255, cv.THRESH_BINARY)
+#
+# @function Standard_Hough
+#
+def Standard_Hough(s_trackbar):
 
-    # Encuentra el contorno de las áreas negras
-    contours, _ = cv.findContours(binary_mask, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE)
+	standard_hough = cv2.cvtColor(edges, cv2.COLOR_GRAY2BGR)
 
-    # Encuentra el rectángulo delimitador más grande de las áreas negras
-    largest_area = 0
-    largest_contour = None
-    for contour in contours:
-        area = cv.contourArea(contour)
-        if area > largest_area:
-            largest_area = area
-            largest_contour = contour
+	# Use Standard Hough Transform
+	s_lines = cv2.HoughLines(edges, 1, np.pi / 90, min_threshold+s_trackbar)
 
-    if largest_contour is not None:
-        # Obtiene las coordenadas del rectángulo delimitador
-        x, y, w, h = cv.boundingRect(largest_contour)
+	# s_lines = cv2.HoughLines( edges, 3, np.pi/90, min_threshold); // uncomment this and comment the other to fix the threshold in a final solution
 
-        # Recorta la imagen original para eliminar las áreas negras
-        imagen_recortada = imagen[y:y+h, x:x+w]
+	# Show the result
 
-        return imagen_recortada
-    else:
-        return None  # Si no se encontraron áreas negras, devuelve None
+	for line in s_lines:
+		r = line[0][0]
+		t = line[0][1]
+		a = np.cos(t)
+		b = np.sin(t)
+		x0 = a*r
+		y0 = b*r
+		pt1 = (round(x0 - alpha * b), round(y0 + alpha * a))
+		pt2 = (round(x0 + alpha * b), round(y0 - alpha * a))
+		cv2.line(standard_hough, pt1, pt2, (255, 0, 0), 2)
 
 
+	cv2.imshow(standard_name, standard_hough);
+
+#
+# @function Probabilistic_Hough
+#
+def Probabilistic_Hough(p_trackbar):
+
+	probabilistic_hough = cv2.cvtColor(edges, cv2.COLOR_GRAY2BGR)
+
+	# Use Probabilistic Hough Transform
+	p_lines = cv2.HoughLinesP(edges, 1, np.pi/90, threshold=min_threshold+ p_trackbar, minLineLength=30, maxLineGap=30)
+
+	# Show the result
+
+	for points in p_lines:
+		pt1 = (points[0][0], points[0][1])
+		pt2 = (points[0][2], points[0][3])
+		cv2.line(probabilistic_hough, pt1, pt2, (255, 0, 0), 2)
+		
+	cv2.imshow(probabilistic_name, probabilistic_hough)
 
 def DrawHist_HS( Hist_HS, DisplayName):
 
@@ -73,103 +114,113 @@ def DrawHist_HS( Hist_HS, DisplayName):
             # converting the histogram value to Intensity and using the corresponding H-S we can recover the RGB and visualize the histogram in color
             H = np.uint8(i/bins1*180 + h_ranges[0])
             S = np.uint8(j/bins2*255 + s_ranges[0])
-            BGR = cv.cvtColor(np.uint8([[[H,binVal,S]]]), cv.COLOR_HLS2BGR)
+            BGR = cv2.cvtColor(np.uint8([[[H,binVal,S]]]), cv2.COLOR_HLS2BGR)
             color = (round(BGR[0,0,0])*10, round(BGR[0,0,1])*10, round(BGR[0,0,2])*10) # I am multiplying by an arbitrary value to visualize colors better, because the weight of the black pixels is too high in the histogram
             start_point = (i*scale, j*scale)
             end_point = ((i+1)*scale, (j+1)*scale)
-            hist2DImg = cv.rectangle(hist2DImg, start_point, end_point, color, thickness)
+            hist2DImg = cv2.rectangle(hist2DImg, start_point, end_point, color, thickness)
 
     y=np.flipud(hist2DImg) #turning upside down the image to have (0,0) in the lower left corner
-    cv.imshow(DisplayName,y)
+    cv2.imshow(DisplayName,y)
 
     return(0)
 
+#########################
+###  Main program #######
+def main():
 
-img = cv.imread('tcol1.bmp', cv.IMREAD_GRAYSCALE)
-imgRGB = cv.imread('tcol1.bmp')
-blur = cv.GaussianBlur(img,(5,5),0)
-assert img is not None, "file could not be read, check with os.path.exists()"
-global edges
-edges = cv.Canny(blur,100,200)
+    #img_files = sys.argv
 
-
-kernel3 = np.ones((3,3),np.uint8)
-kernel5 = np.ones((5,5),np.uint8)
-kernel7 = np.ones((7,7),np.uint8)
-kernel9 = np.ones((9,9),np.uint8)
-kernel11 = np.ones((11,11),np.uint8)
-kernel15 = np.ones((15,15),np.uint8)
-kernel17 = np.ones((17,17),np.uint8)
-
-#https://docs.opencv.org/4.x/d9/d61/tutorial_py_morphological_ops.html
-#opening = cv.morphologyEx(edges, cv.MORPH_GRADIENT, kernel17)
-#opening = cv.dilate(opening, kernel11, iterations = 1)
-#opening = cv.morphologyEx(opening, cv.MORPH_CLOSE, kernel17)
-dilate = cv.dilate(edges,kernel17,iterations = 5)
-erode = cv.erode(dilate,kernel17,iterations = 5)
-
-final_mask=erode*img
-""" output_img = np.zeros_like(final_mask)
-output_img[final_mask == 255] = [0, 0, 0]  # [B, G, R] values for black """
+    img_files = ['program', 'tcol1.bmp', 'tcol2.bmp', 'tcol3.bmp']
 
 
+    if len(img_files) <4:
+        sys.exit(" You need to provide at least 3 image files")
 
-# Crea una figura de Matplotlib con una cuadrícula de 2x2 y muestra cada imagen en una ubicación específica
-plt.subplot(221)
-plt.imshow(cv.cvtColor(img, cv.COLOR_BGR2RGB))
-plt.title('Original Image')
-plt.axis('off')
+    img_descriptor_list = {} # initializing a dictionary to collect the descriptor of images
+    for index, filename in enumerate(img_files[1:4]):
+        img = cv2.imread(filename) 
+        if img is None:
+            print("Could not read the image ", filename)
+            sys.exit()
 
-plt.subplot(222)
-plt.imshow(edges, cmap='gray')
-plt.title('Edge Image')
-plt.axis('off')
+        cv2.imshow("Display window", img)    
 
-plt.subplot(223)
-plt.imshow(erode, cmap='gray')
-plt.title('Opening')
-plt.axis('off')
+        # Change of Color Space to calculate histograms in H-S
+        img = cv2.cvtColor(img, cv2.COLOR_BGR2HLS)
 
-# Deja el cuarto subplot en blanco (si deseas agregar una cuarta imagen, puedes hacerlo aquí)
-plt.subplot(223)
-plt.imshow(final_mask, cmap='gray')
-plt.title('Wish image')
-plt.axis('off')
+        # Extracting the 2D histogram as an image descriptor
 
-# Ajusta automáticamente el espacio entre subplots
-plt.tight_layout()
-# Muestra la figura con todas las imágenes
-plt.show()
+        img_descriptor_list[index] = cv2.calcHist([img], channels, None, histSize, ranges, accumulate=False)
+        cv2.normalize(img_descriptor_list[index], img_descriptor_list[index], alpha=0, beta=1, norm_type=cv2.NORM_MINMAX )
+        DrawHist_HS(img_descriptor_list[index], "Hue-Saturation Histogram")
+        cv2.waitKey(0)
 
-masked_b = cv.bitwise_and(imgRGB[:, :, 0], erode)
-masked_g = cv.bitwise_and(imgRGB[:, :, 1], erode)
-masked_r = cv.bitwise_and(imgRGB[:, :, 2], erode)
-# Combina los canales para formar la imagen resultante
-final_final_img = cv.merge((masked_b, masked_g, masked_r))
+    ###########
+    # Visualizing Canny and Hough thresholds for detecting the external edges of tetra-bricks (only for the first image)
 
-cropped_img=recortar_areas_negras(final_final_img)
-nombre_archivo = 'imagen_guardada.jpg'  # Cambia el nombre y la extensión del archivo según tu preferencia
-cv.imwrite(nombre_archivo, cropped_img)
+    img = cv2.imread(img_files[1]) 
 
-cv.imshow('Final image', final_final_img)
-cv.waitKey(0)
+    # Create a window
+    cv2.namedWindow(window_name, cv2.WINDOW_NORMAL)
 
-cv.destroyAllWindows()
+    # Create a Trackbar for user to enter Canny threshold (comment it to use the default values defined in the header)
 
-cropped_img=recortar_areas_negras(final_final_img)
-nombre_archivo = 'imagen_guardada.jpg'  # Cambia el nombre y la extensión del archivo según tu preferencia
-cv.imwrite(nombre_archivo, cropped_img)
+    cv2.createTrackbar("Min Threshold", window_name, lowThreshold, max_lowThreshold, partial(CannyThreshold, a=img))
+    
+    # Show the image
+    CannyThreshold(lowThreshold, img)
 
-cv.waitKey(0)
-
-cv.destroyAllWindows()
+    # Wait until user exit program by pressing a key
+    cv2.waitKey(0)
 
 
-#Making the histogram
-img_descriptor_list = cv.calcHist(cropped_img, channels, None, histSize, ranges, accumulate=False)
-cv.normalize(img_descriptor_list, img_descriptor_list, alpha=0, beta=1, norm_type=cv.NORM_MINMAX )
-DrawHist_HS( img_descriptor_list, 'Histogram')
-cv.waitKey(0)
-cv.destroyAllWindows()
+    # Create Trackbar for Hough Threshold
+
+    cv2.namedWindow(standard_name, cv2.WINDOW_NORMAL);
+
+    cv2.createTrackbar("Hough threshold", standard_name, s_trackbar, max_trackbar, Standard_Hough)
+
+    start = cv2.getTickCount()
+    # Show the image
+    Standard_Hough(s_trackbar)
+    duration = (cv2.getTickCount()-start)/cv2.getTickFrequency()
+    print("duration of Standard Hough process (msec) = ", duration)
+
+    # Create Trackbar for Probabilistic Hough Threshold
+
+    cv2.namedWindow(probabilistic_name, cv2.WINDOW_NORMAL);
+
+    cv2.createTrackbar("Prob. Hough threshold", probabilistic_name, p_trackbar, max_trackbar, Probabilistic_Hough)
+
+    start = cv2.getTickCount()
+    # Show the image
+    Probabilistic_Hough(p_trackbar)
+    duration = (cv2.getTickCount()-start)/cv2.getTickFrequency()
+    print("duration of Probabilistic Hough process (msec) = ", duration)
+
+    # Wait until user exit program by pressing a key
+    cv2.waitKey(0)
+
+    #############
+
+    print("Comparing the histograms of the 3 image files :")
+
+    # Apply the histogram comparison methods
+    # OpenCV does everything! See docs.opencv.org to understand the methods. You can program new histogram measurements
+    # I am not using any segmentation here
+
+    print("Matching Methods: 0=Correlation, 1=ChiSquare, 2=Intersection, 3=Bhattacharyya")
+    for method in range(4):
+        base_base = cv2.compareHist(img_descriptor_list[0], img_descriptor_list[0], method)
+        base_test1 = cv2.compareHist(img_descriptor_list[0], img_descriptor_list[1], method)
+        base_test2 = cv2.compareHist(img_descriptor_list[0], img_descriptor_list[2], method)
+        print(f" Matching Method {method}: Perfect: {base_base}, Base-Test(1): {base_test1}, Base-Test(2): {base_test2} \n")
 
 
+
+
+    print("Done \n")
+
+if __name__== '__main__':
+    main()
