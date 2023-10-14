@@ -71,29 +71,28 @@ def CannyThreshold(lowThreshold, a):
 # @function Standard_Hough
 #
 def Standard_Hough(s_trackbar):
+    standard_hough = cv.cvtColor(edges, cv.COLOR_GRAY2BGR)
 
-	standard_hough = cv.cvtColor(edges, cv.COLOR_GRAY2BGR)
+    # Use Standard Hough Transform
+    s_lines = cv.HoughLines(edges, 1, np.pi / 90, min_threshold + s_trackbar)
+    print(f"{s_lines}")
+    
+    # Show the result
+    for line in s_lines:
+        r = line[0][0]
+        t = line[0][1]
+        a = np.cos(t)
+        b = np.sin(t)
+        x0 = a * r
+        y0 = b * r
+        pt1 = (round(x0 - alpha * b), round(y0 + alpha * a))
+        pt2 = (round(x0 + alpha * b), round(y0 - alpha * a))
+        cv.line(standard_hough, pt1, pt2, (255, 0, 0), 2)
+        print(f"Houghlines: Rho {r}, Theta: {t}, Point1: {pt1}, Point2: {pt2}")
 
-	# Use Standard Hough Transform
-	s_lines = cv.HoughLines(edges, 1, np.pi / 90, min_threshold+s_trackbar)
-
-	# s_lines = cv.HoughLines( edges, 3, np.pi/90, min_threshold); // uncomment this and comment the other to fix the threshold in a final solution
-
-	# Show the result
-
-	for line in s_lines:
-		r = line[0][0]
-		t = line[0][1]
-		a = np.cos(t)
-		b = np.sin(t)
-		x0 = a*r
-		y0 = b*r
-		pt1 = (round(x0 - alpha * b), round(y0 + alpha * a))
-		pt2 = (round(x0 + alpha * b), round(y0 - alpha * a))
-		cv.line(standard_hough, pt1, pt2, (255, 0, 0), 2)
+    cv.imshow(standard_name, standard_hough)
 
 
-	cv.imshow(standard_name, standard_hough);
 
 #
 # @function Probabilistic_Hough
@@ -143,9 +142,8 @@ def DrawHist_HS( Hist_HS, DisplayName):
 bgModel_RGB = cv.createBackgroundSubtractorMOG2()
 imgRGB = cv.imread('tcol1.bmp') 
 edges = cv.cvtColor(imgRGB, cv.COLOR_BGR2GRAY)
-edges1 = cv.GaussianBlur(edges, (31, 31), 7)
+edges1 = cv.GaussianBlur(edges, (31, 31), 4)
 edges = cv.Canny(edges1, 40, 50, 3)
-print(edges)
 cv.imshow('frame', imgRGB)  # Mostrar los fotogramas del video
 cv.waitKey(0)
 cv.destroyAllWindows()
@@ -158,6 +156,7 @@ cv.waitKey(0)
 cv.destroyAllWindows()
 a=edges
 Standard_Hough(1)
+print("holi")
 cv.waitKey(0)
 
 
