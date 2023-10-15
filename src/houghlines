@@ -66,14 +66,13 @@ lines=Standard_Hough(edges)
 print("holi")
 cv.waitKey(0)
 
-# Inicializar listas para almacenar las líneas paralelas y opuestas
 parallel_lines = []
-opposite_lines = []
+perpendicular_lines = []
+edges1 = cv.cvtColor(edges, cv.COLOR_BGR2GRAY)
+# Tolerancia para considerar ángulos cercanos a 90 grados
+angle_tolerance = 10
 
-# Tolerancia para considerar ángulos cercanos a 180 grados
-angle_tolerance = 30
-
-# Identificar líneas paralelas y opuestas
+# Identificar líneas paralelas y perpendiculares
 for i in range(len(lines)):
     for j in range(i + 1, len(lines)):
         rho1, theta1 = lines[i][0]
@@ -84,20 +83,20 @@ for i in range(len(lines)):
         # Calcular la diferencia de ángulo
         angle_difference = abs(angle1_degrees - angle2_degrees)
 
-        if abs(angle_difference - 180) < angle_tolerance:
-            # Las líneas son opuestas
-            opposite_lines.append((rho1, theta1, rho2, theta2))
+        if abs(angle_difference - 90) < angle_tolerance:
+            # Las líneas son perpendiculares
+            perpendicular_lines.append((rho1, theta1, rho2, theta2))
         elif abs(angle_difference) < angle_tolerance:
             # Las líneas son paralelas
             parallel_lines.append((rho1, theta1, rho2, theta2))
 
-# Seleccionar dos pares de líneas paralelas y opuestas
-if len(parallel_lines) >= 2 and len(opposite_lines) >= 2:
-    selected_parallel_pairs = parallel_lines[:2]
-    selected_opposite_pairs = opposite_lines[:2]
+# Seleccionar un par de líneas paralelas y un par de líneas perpendiculares
+if len(parallel_lines) >= 2 and len(perpendicular_lines) >= 2:
+    selected_parallel_pair = parallel_lines[:2]
+    selected_perpendicular_pair = perpendicular_lines[:2]
 
-    # Dibujar los rectángulos utilizando los pares de líneas seleccionados
-    for pair in selected_parallel_pairs + selected_opposite_pairs:
+    # Dibujar las líneas de los pares seleccionados en la imagen original
+    for pair in selected_parallel_pair + selected_perpendicular_pair:
         rho1, theta1, rho2, theta2 = pair
         a1 = np.cos(theta1)
         b1 = np.sin(theta1)
@@ -108,11 +107,10 @@ if len(parallel_lines) >= 2 and len(opposite_lines) >= 2:
         x2 = a2 * rho2
         y2 = b2 * rho2
 
-        # Aquí puedes utilizar los puntos (x1, y1) y (x2, y2) para dibujar los rectángulos
+        # Dibuja las líneas en la imagen
+        cv.line(edges1, (int(x1), int(y1)), (int(x2), int(y2)), (0, 0, 255), 2)
 
-# Mostrar la imagen con los rectángulos
-cv.imshow('Rectángulos', imgRGB)
+# Mostrar la imagen con las líneas seleccionadas
+cv.imshow('Líneas Seleccionadas', edges1)
 cv.waitKey(0)
 cv.destroyAllWindows()
-
-
