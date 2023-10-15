@@ -227,7 +227,7 @@ def run_program(img_path):
             comp2 = cv.compareHist(hist, hist_i, method=2)
             comp3 = cv.compareHist(hist, hist_i, method=3)
 
-            if (comp1 < 100 and comp3 < 0.5):
+            if (comp1 < 125 and comp3 < 0.5):
                 name = df.at[i, 'name']
                 print(f'\nThat is a \033[1;34m{name}\033[0m tetrabrick')
                 match = True
