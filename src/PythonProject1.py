@@ -1,105 +1,103 @@
-import cv2 
-import sys
+import cv2 as cv
+import os
 import numpy as np
-from functools import partial # This is needed to pass the original image to the Callback function (createTrackbar)
+import pandas as pd
+from matplotlib import pyplot as plt
+import sys
+import skimage
+from functools import partial
+from skimage import filters
+import math
+import pandas as pd
+import tkinter as tk
+from tkinter import filedialog
+import glob
 
-# Global variables (be careful because variables in this list are used in the functions, 
-# so these functions can not be copied to another program as they are here...you would need to modify them)
+global edges
+
+import warnings
+warnings.filterwarnings("ignore", category=DeprecationWarning)
+import matplotlib.cbook
 
 
-window_name = "Edge Map"
+# --------------------------------------------------------------------------------------------
+# |                                      CONSTANTS                                           |
+# --------------------------------------------------------------------------------------------
 standard_name = "Standard Hough Lines Demo"
 probabilistic_name = "Probabilistic Hough Lines Demo"
-min_threshold = 30
-max_trackbar = 150
-s_trackbar = 0
-p_trackbar = 0
-
-edgeThresh = 1
-lowThreshold = 30
-max_lowThreshold = 100
-multiplier = 3
-kernel_size = 3
+min_threshold = 10
+max_trackbar = 170
 alpha = 1000
-
-
-
+DATABASE_FILE = "database.csv"
 
 h_bins = 30
 s_bins = 32
 histSize = [h_bins, s_bins]
-# hue varies from 0 to 179, saturation from 0 to 255
-h_ranges = [0, 180]
-s_ranges = [0, 256]
+
+h_ranges = [0, 180] # hue varies from 0 to 179,
+s_ranges = [0, 256] # saturation from 0 to 255
 ranges = h_ranges + s_ranges # concat lists
-# Use the 0-th and 1-st channels
-channels = [0, 2]
 
-#
-# * @function CannyThreshold
-# * @brief Trackbar callback - Canny thresholds input with a ratio 1:3
-#
+channels = [0, 2] # Use the 0-th and 1-st channels
 
-def CannyThreshold(lowThreshold, a):
-    global edges
-    src_gray = cv2.cvtColor(a , cv2.COLOR_BGR2GRAY)
-    # Reduce noise with a kernel 5x5
-    blurred = cv2.blur(src_gray, (5, 5))
-    # Canny detector
-    edges = cv2.Canny(blurred, lowThreshold, lowThreshold*multiplier, kernel_size)
-    Mask = edges/255
-    # Using Canny's output as a mask, we display our result
-    dst = a * (Mask[:,:,None].astype(a.dtype))
-    cv2.imshow(window_name, dst)
+# --------------------------------------------------------------------------------------------
+# |                                      FUNCTIONS                                           |
+# --------------------------------------------------------------------------------------------
+def cut_black_areas(imagen):
+    img_gray = cv.cvtColor(imagen, cv.COLOR_BGR2GRAY)
+    threshold_value = 10
+    _, binary_mask = cv.threshold(img_gray, threshold_value, 255, cv.THRESH_BINARY)
 
-#
-# @function Standard_Hough
-#
-def Standard_Hough(s_trackbar):
+    # Encontrar el contorno más grande
+    contours, _ = cv.findContours(binary_mask, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE)
 
-	standard_hough = cv2.cvtColor(edges, cv2.COLOR_GRAY2BGR)
+    largest_area = 0
+    largest_contour = None
 
-	# Use Standard Hough Transform
-	s_lines = cv2.HoughLines(edges, 1, np.pi / 90, min_threshold+s_trackbar)
+    for contour in contours:
+        area = cv.contourArea(contour)
+        if area > largest_area:
+            largest_area = area
+            largest_contour = contour
 
-	# s_lines = cv2.HoughLines( edges, 3, np.pi/90, min_threshold); // uncomment this and comment the other to fix the threshold in a final solution
+    if largest_contour is not None:
+        # Calcular el ángulo de rotación del rectángulo delimitador
+        rect = cv.minAreaRect(largest_contour)
+        angle = rect[2]
 
-	# Show the result
+        if angle < -45:
+            angle += 90
 
-	for line in s_lines:
-		r = line[0][0]
-		t = line[0][1]
-		a = np.cos(t)
-		b = np.sin(t)
-		x0 = a*r
-		y0 = b*r
-		pt1 = (round(x0 - alpha * b), round(y0 + alpha * a))
-		pt2 = (round(x0 + alpha * b), round(y0 - alpha * a))
-		cv2.line(standard_hough, pt1, pt2, (255, 0, 0), 2)
+        # Rotar la imagen para enderezar el tetrabrick
+        rows, cols, _ = imagen.shape
+        M = cv.getRotationMatrix2D((cols / 2, rows / 2), -angle, 1)
+        rotated_image = cv.warpAffine(imagen, M, (cols, rows))
+
+        # Recortar la imagen rotada original para eliminar las áreas negras
+        rotated_gray = cv.cvtColor(rotated_image, cv.COLOR_BGR2GRAY)
+        _, rotated_binary_mask = cv.threshold(rotated_gray, threshold_value, 255, cv.THRESH_BINARY)
+        rotated_contours, _ = cv.findContours(rotated_binary_mask, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE)
+
+        largest_area = 0
+        largest_contour = None
+
+        for contour in rotated_contours:
+            area = cv.contourArea(contour)
+            if area > largest_area:
+                largest_area = area
+                largest_contour = contour
+
+        if largest_contour is not None:
+            x, y, w, h = cv.boundingRect(largest_contour)
+            imagen_recortada = rotated_image[y:y+h, x:x+w]
+
+            return imagen_recortada
+
+    return None  # Si no se encontraron áreas negras o no se pudo corregir el giro, devuelve None
 
 
-	cv2.imshow(standard_name, standard_hough);
 
-#
-# @function Probabilistic_Hough
-#
-def Probabilistic_Hough(p_trackbar):
-
-	probabilistic_hough = cv2.cvtColor(edges, cv2.COLOR_GRAY2BGR)
-
-	# Use Probabilistic Hough Transform
-	p_lines = cv2.HoughLinesP(edges, 1, np.pi/90, threshold=min_threshold+ p_trackbar, minLineLength=30, maxLineGap=30)
-
-	# Show the result
-
-	for points in p_lines:
-		pt1 = (points[0][0], points[0][1])
-		pt2 = (points[0][2], points[0][3])
-		cv2.line(probabilistic_hough, pt1, pt2, (255, 0, 0), 2)
-		
-	cv2.imshow(probabilistic_name, probabilistic_hough)
-
-def DrawHist_HS( Hist_HS, DisplayName):
+def DrawHist_HS(Hist_HS, DisplayName):
 
     bins1 = Hist_HS.shape[0]
     bins2 = Hist_HS.shape[1]
@@ -112,110 +110,274 @@ def DrawHist_HS( Hist_HS, DisplayName):
             # converting the histogram value to Intensity and using the corresponding H-S we can recover the RGB and visualize the histogram in color
             H = np.uint8(i/bins1*180 + h_ranges[0])
             S = np.uint8(j/bins2*255 + s_ranges[0])
-            BGR = cv2.cvtColor(np.uint8([[[H,binVal,S]]]), cv2.COLOR_HLS2BGR)
+            BGR = cv.cvtColor(np.uint8([[[H, binVal,S]]]), cv.COLOR_HLS2BGR)
             color = (round(BGR[0,0,0])*10, round(BGR[0,0,1])*10, round(BGR[0,0,2])*10) # I am multiplying by an arbitrary value to visualize colors better, because the weight of the black pixels is too high in the histogram
             start_point = (i*scale, j*scale)
             end_point = ((i+1)*scale, (j+1)*scale)
-            hist2DImg = cv2.rectangle(hist2DImg, start_point, end_point, color, thickness)
+            hist2DImg = cv.rectangle(hist2DImg, start_point, end_point, color, thickness)
 
     y=np.flipud(hist2DImg) #turning upside down the image to have (0,0) in the lower left corner
-    cv2.imshow(DisplayName,y)
+    cv.imshow(DisplayName, y)
 
     return(0)
 
-#########################
-###  Main program #######
-def main():
+def make_mask(imagen):
+    img_name = os.path.basename(imagen)
+    img_name = img_name.split(".")[0]
 
-    #img_files = sys.argv
-    img_files = ['program', 'tcol1.bmp', 'tcol2.bmp', 'tcol3.bmp']
+    img = cv.imread(imagen, cv.IMREAD_GRAYSCALE)
+    imgRGB = cv.imread(imagen)
 
+    blur = cv.GaussianBlur(img, (5, 5), 0) # apply blur to grayscale image
+    assert img is not None, "file could not be read, check with os.path.exists()"
 
-    if len(img_files) <4:
-        sys.exit(" You need to provide at least 3 image files")
+    edges = cv.Canny(blur, 100, 200)
+    kernel = np.ones((17, 17), np.uint8)
+    dilate = cv.dilate(edges, kernel, iterations=5)
+    erode = cv.erode(dilate, kernel, iterations=5)
 
-    img_descriptor_list = {} # initializing a dictionary to collect the descriptor of images
-    for index, filename in enumerate(img_files[1:4]):
-        img = cv2.imread(filename) 
-        if img is None:
-            print("Could not read the image ", filename)
-            sys.exit()
+    final_mask = erode * img
 
-        cv2.imshow("Display window", img)    
+    # Figura ----------------------------------------------------------------------
+    plt.subplot(221)
+    plt.imshow(cv.cvtColor(img, cv.COLOR_BGR2RGB))
+    plt.title('Original Image')
+    plt.axis('off')
 
-        # Change of Color Space to calculate histograms in H-S
-        img = cv2.cvtColor(img, cv2.COLOR_BGR2HLS)
+    plt.subplot(222)
+    plt.imshow(edges, cmap='gray')
+    plt.title('Edge Image')
+    plt.axis('off')
 
-        # Extracting the 2D histogram as an image descriptor
+    plt.subplot(223)
+    plt.imshow(erode, cmap='gray')
+    plt.title('Opening')
+    plt.axis('off')
 
-        img_descriptor_list[index] = cv2.calcHist([img], channels, None, histSize, ranges, accumulate=False)
-        cv2.normalize(img_descriptor_list[index], img_descriptor_list[index], alpha=0, beta=1, norm_type=cv2.NORM_MINMAX )
-        DrawHist_HS(img_descriptor_list[index], "Hue-Saturation Histogram")
-        cv2.waitKey(0)
+    plt.subplot(224)
+    plt.imshow(final_mask, cmap='gray')
+    plt.title('Wish image')
+    plt.axis('off')
 
-    ###########
-    # Visualizing Canny and Hough thresholds for detecting the external edges of tetra-bricks (only for the first image)
+    plt.suptitle(f'{img_name}', fontsize=16)
 
-    img = cv2.imread(img_files[1]) 
+    plt.tight_layout()
+    # plt.show(block=False)
 
-    # Create a window
-    cv2.namedWindow(window_name, cv2.WINDOW_NORMAL)
+    # Esperar a que se presione una tecla
+    # plt.waitforbuttonpress()
+    # ------------------------------------------------------------------------
 
-    # Create a Trackbar for user to enter Canny threshold (comment it to use the default values defined in the header)
+    masked_b = cv.bitwise_and(imgRGB[:, :, 0], erode)
+    masked_g = cv.bitwise_and(imgRGB[:, :, 1], erode)
+    masked_r = cv.bitwise_and(imgRGB[:, :, 2], erode)
+    final_img = cv.merge((masked_b, masked_g, masked_r))
 
-    cv2.createTrackbar("Min Threshold", window_name, lowThreshold, max_lowThreshold, partial(CannyThreshold, a=img))
+    output_directory = "excImages"
+    if not os.path.exists(output_directory):
+        os.makedirs(output_directory)
+
+    cropped_img = cut_black_areas(final_img)
+    cv.imwrite(f'excImages/{img_name}.png', cropped_img)
+
+    # cv.imshow('Final image', final_img)
+    return cropped_img
+
+def make_hist(imagen):
+    img = make_mask(imagen)
+
+    if img is None:
+        print("Could not read the image ", imagen)
+        sys.exit()
+
+    img = cv.cvtColor(img, cv.COLOR_BGR2HLS)
+
+    hist = cv.calcHist([img], channels, None, histSize, ranges, accumulate=False)
+    cv.normalize(hist, hist, alpha=0, beta=1, norm_type=cv.NORM_MINMAX)
+
+    # DrawHist_HS(hist, "Hue-Saturation Histogram")
+    return hist
     
-    # Show the image
-    CannyThreshold(lowThreshold, img)
+def debug_mode(img_path=None):
+    print("\n\033[1;34m >>> You are currently in debugging mode\033[0m")
 
-    # Wait until user exit program by pressing a key
-    cv2.waitKey(0)
+    if not os.path.exists(DATABASE_FILE):
+        print("\n       > There are no models in the database.")
+    else:
+        df = pd.read_csv(DATABASE_FILE)
+        num_models = len(df)
+
+        if num_models == 1:
+            print(f"\n      There is {num_models} model in the database:\n")
+        else:
+            print(f"\n      There are {num_models} models in the database:\n")
+
+        for model_name in df['name']:
+            print(f'            > {model_name}')
+
+    if img_path is not None and os.path.exists(DATABASE_FILE):
+        df = pd.read_csv(DATABASE_FILE)
+        hist = make_hist(img_path)
+
+        for _, row in df.iterrows():
+            hist_i = np.load(row['hist_path'])
+            comp0 = cv.compareHist(hist, hist_i, method=0)
+            comp1 = cv.compareHist(hist, hist_i, method=1)
+            comp2 = cv.compareHist(hist, hist_i, method=2)
+            comp3 = cv.compareHist(hist, hist_i, method=3)
+            distance = cv.norm(hist, hist_i, cv.NORM_L2)
+            name_i = row['name']
+
+            print(f'\n--------------------------------------------------------'
+                  f'\n\033[35mDistances to {name_i} are:\033[0m'
+                  f'\nCorrelation:   {comp0}'
+                  f'\nChiSquare:     {comp1}'
+                  f'\nIntersection:  {comp2}'
+                  f'\nBhattacharyya: {comp3}'
+                  f'\nL2:            {distance}')
+
+def run_program(img_path):
+    if not os.path.exists(DATABASE_FILE):
+        print("\nThere is no database for comparisons yet...")
+        tetra_name = input("In order to create it, please, introduce the name of your tetrabrick: ")
+
+        hist = make_hist(img_path)
+
+        if not os.path.exists("Histograms"):
+            os.mkdir("Histograms")
+
+        hist_path = f'Histograms\{tetra_name}.npy'
+        np.save(hist_path, hist)
+
+        data = {"name": tetra_name, "path": img_path, "hist_path": hist_path}
+        df = pd.DataFrame(data, index=[0])
+        df.to_csv(DATABASE_FILE, index=False)
+        print(f'\nThanks! Database created and saved in {DATABASE_FILE}.')
+    else:
+        df = pd.read_csv(DATABASE_FILE)
+        hist = make_hist(img_path)
+        match = False
+
+        for _, row in df.iterrows():
+            hist_i = np.load(row['hist_path'])
+            comp1 = cv.compareHist(hist, hist_i, method=1)
+            comp3 = cv.compareHist(hist, hist_i, method=3)
+
+            if comp1 < 100 and comp3 < 0.5:
+                name = row['name']
+                print(f'\nThat is a \033[1;34m{name}\033[0m tetrabrick')
+                match = True
+
+        if not match:
+            print("\nThere is no match for that tetrabrick...")
+            tetra_name = input("Please, introduce the name of the new tetrabrick to register: ")
+            hist_path = f'Histograms\{tetra_name}.npy'
+            np.save(hist_path, hist)
+            new_row = {'name': tetra_name, 'path': img_path, 'hist_path': hist_path}
+            df = df.append(new_row, ignore_index=True)
+            df = df.sort_values(by='name', ascending=True)
+            df.to_csv(DATABASE_FILE, index=False)
+            print(f'{tetra_name} saved in the database {DATABASE_FILE}')
 
 
-    # Create Trackbar for Hough Threshold
+def run_program2(directory):
+    try:
+        for file in os.listdir(directory):
+            img_path = os.path.join(directory, file)
+            img = cv.imread(img_path)
 
-    cv2.namedWindow(standard_name, cv2.WINDOW_NORMAL);
+            if img is not None and img.shape[0] > 0 and img.shape[1] > 0: # Si se cumple el tamaño de la imagen, el último bucle daría un warning
+                cv.imshow("Current Image", img)
+                cv.waitKey(0)  # Wait for a key press
+                cv.destroyAllWindows()
 
-    cv2.createTrackbar("Hough threshold", standard_name, s_trackbar, max_trackbar, Standard_Hough)
+                if not os.path.exists(DATABASE_FILE):
+                    print("\nThere is no database for comparisons yet...")
+                    
+                    tetra_name = input("In order to create it, please, introduce the name of your tetrabrick: ")
 
-    start = cv2.getTickCount()
-    # Show the image
-    Standard_Hough(s_trackbar)
-    duration = (cv2.getTickCount()-start)/cv2.getTickFrequency()
-    print("duration of Standard Hough process (msec) = ", duration)
+                    hist = make_hist(img_path)
 
-    # Create Trackbar for Probabilistic Hough Threshold
+                    if not os.path.exists("Histograms"):
+                        os.mkdir("Histograms")
 
-    cv2.namedWindow(probabilistic_name, cv2.WINDOW_NORMAL);
+                    hist_path = f'Histograms\{tetra_name}.npy'
+                    np.save(hist_path, hist)
 
-    cv2.createTrackbar("Prob. Hough threshold", probabilistic_name, p_trackbar, max_trackbar, Probabilistic_Hough)
+                    data = {"name": tetra_name, "path": img_path, "hist_path": hist_path}
+                    df = pd.DataFrame(data, index=[0])
+                    df.to_csv(DATABASE_FILE, index=False)
+                    print(f'\nThanks! Database created and saved in {DATABASE_FILE}.')
+                else:
+                    df = pd.read_csv(DATABASE_FILE)
+                    hist = make_hist(img_path)
+                    match = False
 
-    start = cv2.getTickCount()
-    # Show the image
-    Probabilistic_Hough(p_trackbar)
-    duration = (cv2.getTickCount()-start)/cv2.getTickFrequency()
-    print("duration of Probabilistic Hough process (msec) = ", duration)
+                    for _, row in df.iterrows():
+                        hist_i = np.load(row['hist_path'])
+                        comp1 = cv.compareHist(hist, hist_i, method=1)
+                        comp3 = cv.compareHist(hist, hist_i, method=3)
 
-    # Wait until user exit program by pressing a key
-    cv2.waitKey(0)
+                        if comp1 <= 100 and comp3 < 0.5:
+                            name = row['name']
+                            print(f'\nThat is a \033[1;34m{name}\033[0m tetrabrick')
+                            match = True
 
-    #############
+                    if not match:
+                        print("\nThere is no match for that tetrabrick...")
+                        tetra_name = input("Please, introduce the name of the new tetrabrick to register: ")
+                        hist_path = f'Histograms\{tetra_name}.npy'
+                        np.save(hist_path, hist)
+                        new_row = {'name': tetra_name, 'path': img_path, 'hist_path': hist_path}
+                        df = df._append(new_row, ignore_index=True)
+                        df = df.sort_values(by='name', ascending=True)
+                        df.to_csv(DATABASE_FILE, index=False)
+                        print(f'{tetra_name} saved in the database {DATABASE_FILE}')
+    except Exception as e:
+        print("Error:", e)
 
-    print("Comparing the histograms of the 3 image files :")
+def main():
+    try:
+        debug = False
+        print("\n-----------------------------------------------"
+            "\n       WELCOME TO TETRABRICK DETECTOR"
+            "\n-----------------------------------------------")
 
-    # Apply the histogram comparison methods
-    # OpenCV does everything! See docs.opencv.org to understand the methods. You can program new histogram measurements
-    # I am not using any segmentation here
+        code_folder = os.path.dirname(os.path.abspath(__file__))
+        print(code_folder)
 
-    print("Matching Methods: 0=Correlation, 1=ChiSquare, 2=Intersection, 3=Bhattacharyya")
-    for method in range(4):
-        base_base = cv2.compareHist(img_descriptor_list[0], img_descriptor_list[0], method)
-        base_test1 = cv2.compareHist(img_descriptor_list[0], img_descriptor_list[1], method)
-        base_test2 = cv2.compareHist(img_descriptor_list[0], img_descriptor_list[2], method)
-        print(f" Matching Method {method}: Perfect: {base_base}, Base-Test(1): {base_test1}, Base-Test(2): {base_test2} \n")
+        while True:
+            if not debug:
+                img_path = input(f"\nIntroduce an image to analyze (type 'exit' for ending, 'd' for entering in debug mode or 'all' for analyzing all images): ")
+            else:
+                img_path = input(f"\nIntroduce an image to analyze (type 'exit' for ending, 's' for going back to standard mode or 'all' for analyzing all images): ")
 
-    print("Done \n")
+            img_path = img_path.replace("/", "\\")
 
+            if img_path.lower() == 'exit':
+                print("\033[91mClosing the program, bye.\033[0m")
+                break
+            elif img_path.lower() == 'd':
+                debug_mode()
+                debug = True
+            elif img_path.lower() == 's':
+                debug = False
+            elif img_path.lower() == 'all':
+                root = tk.Tk()
+                root.withdraw()
+                # Prompt the user to select a directory
+                directory = filedialog.askdirectory()
+                run_program2(directory)
+                debug = False
+            else:
+                img_path = os.path.join(code_folder, img_path)
+                if debug:
+                    debug_mode(img_path)
+                    run_program(img_path)
+                else:
+                    run_program(img_path)
+    except Exception as e:
+        print("Error:", e)
 
-if __name__== '__main__':
+if __name__ == '__main__':
     main()
