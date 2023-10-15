@@ -21,14 +21,30 @@ window_name = "Edge Map"
 standard_name = "Standard Hough Lines Demo"
 min_threshold = 50
 alpha = 1000
+lines=[]
+
+ # Función para calcular el ángulo de una línea
+
+def cambio_angulos(theta):
+    angle_degrees = np.degrees(theta)
+    # Asegurarse de que el ángulo esté en el primer cuadrante
+    if angle_degrees >= 90:
+        angle_degrees = 180 - angle_degrees
+    return angle_degrees
+
+
 
 
 def Standard_Hough(edges):
     standard_hough = cv.cvtColor(edges, cv.COLOR_GRAY2BGR) #make a copy
     # Use Standard Hough Transform
+    rho=[]
+    theta=[]
+    points=[]
+    angles=[]
+
     s_lines = cv.HoughLines(edges, 1, np.pi / 90, min_threshold )
     print(f"{s_lines}")
-    
     # Show the result
     for line in s_lines:
         r = line[0][0]
@@ -39,11 +55,21 @@ def Standard_Hough(edges):
         y0 = b * r
         pt1 = (round(x0 - alpha * b), round(y0 + alpha * a))
         pt2 = (round(x0 + alpha * b), round(y0 - alpha * a))
+        points.append([pt1, pt2])
         cv.line(standard_hough, pt1, pt2, (255, 0, 0), 2)
-        print(f"Houghlines: Rho {r}, Theta: {t}, Point1: {pt1}, Point2: {pt2}")
+        
 
+
+    # Extraer los valores de rho y theta de cada línea y almacenarlos en las listas
+    for line in s_lines:
+        r, t = line[0]
+        a=cambio_angulos(t)
+        rho.append(r)
+        theta.append(t)
+        angles.append(a)
+    
     cv.imshow(standard_name, standard_hough)
-    return s_lines
+    return s_lines,rho,theta,angles,points
 
 
 #########################
@@ -62,55 +88,55 @@ cv.imshow('edges', edges)  # Mostrar los bordes del video
 cv.waitKey(0)
 cv.destroyAllWindows()
 a=edges
-lines=Standard_Hough(edges)
-print("holi")
+[s_lines,rho,theta,angle,points] = Standard_Hough(edges)
 cv.waitKey(0)
 
-parallel_lines = []
-perpendicular_lines = []
-edges1 = cv.cvtColor(edges, cv.COLOR_BGR2GRAY)
-# Tolerancia para considerar ángulos cercanos a 90 grados
+# Inicializar listas para almacenar grupos de líneas paralelas
+line_groups = []
+
+i=0
+for line in s_lines:
+
+    print(f"Houghlines: Rho {rho[i]}, Theta: {theta[i]}, Point1: {points[i]}, angle: {angle[i]}")
+    i+=1
+
+
 angle_tolerance = 10
+i=0
+group0=[]
+group30=[]
+group60=[]
+group90=[]
+i=0
+for angl in angle:
+#         # Verificar si esta línea es paralela a las líneas en el grupo
+         if angl<=angle_tolerance:
+             group0.append(i)
+         elif angl>= 15 +angle_tolerance and angl <= angle_tolerance+45:
+             group30.append(i)
+         elif angl >= angle_tolerance+45 and angl<= angle_tolerance+75:
+             group60.append(i)
+         elif angl>= angle_tolerance+75 and  angl<= 90:
+             group90.append(i)
+         i+=1
+         
 
-# Identificar líneas paralelas y perpendiculares
-for i in range(len(lines)):
-    for j in range(i + 1, len(lines)):
-        rho1, theta1 = lines[i][0]
-        rho2, theta2 = lines[j][0]
-        angle1_degrees = np.degrees(theta1)
-        angle2_degrees = np.degrees(theta2)
+print(f"Group 0: {group0}")
+print(f"Group 30: {group30}")
+print(f"Group 60: {group60}")
+print(f"Group 90: {group90}")
 
-        # Calcular la diferencia de ángulo
-        angle_difference = abs(angle1_degrees - angle2_degrees)
 
-        if abs(angle_difference - 90) < angle_tolerance:
-            # Las líneas son perpendiculares
-            perpendicular_lines.append((rho1, theta1, rho2, theta2))
-        elif abs(angle_difference) < angle_tolerance:
-            # Las líneas son paralelas
-            parallel_lines.append((rho1, theta1, rho2, theta2))
+#             group.append(line)
+#             grouped = True
+#             break
 
-# Seleccionar un par de líneas paralelas y un par de líneas perpendiculares
-if len(parallel_lines) >= 2 and len(perpendicular_lines) >= 2:
-    selected_parallel_pair = parallel_lines[:2]
-    selected_perpendicular_pair = perpendicular_lines[:2]
+#     if not grouped:
+#         line_groups.append([line])
 
-    # Dibujar las líneas de los pares seleccionados en la imagen original
-    for pair in selected_parallel_pair + selected_perpendicular_pair:
-        rho1, theta1, rho2, theta2 = pair
-        a1 = np.cos(theta1)
-        b1 = np.sin(theta1)
-        x1 = a1 * rho1
-        y1 = b1 * rho1
-        a2 = np.cos(theta2)
-        b2 = np.sin(theta2)
-        x2 = a2 * rho2
-        y2 = b2 * rho2
+# print(f"{line_groups}")
 
-        # Dibuja las líneas en la imagen
-        cv.line(edges1, (int(x1), int(y1)), (int(x2), int(y2)), (0, 0, 255), 2)
 
-# Mostrar la imagen con las líneas seleccionadas
-cv.imshow('Líneas Seleccionadas', edges1)
-cv.waitKey(0)
-cv.destroyAllWindows()
+
+
+
