@@ -237,48 +237,50 @@ def debug_mode(img_path=None):
                   f'\nL2:            {distance}')
 
 def run_program(img_path):
-    if not os.path.exists(DATABASE_FILE):
-        print("\nThere is no database for comparisons yet...")
-        tetra_name = input("In order to create it, please, introduce the name of your tetrabrick: ")
+    if os.path.exists(img_path):
+        if not os.path.exists(DATABASE_FILE):
+            print("\nThere is no database for comparisons yet...")
+            tetra_name = input("In order to create it, please, introduce the name of your tetrabrick: ")
 
-        hist = make_hist(img_path)
+            hist = make_hist(img_path)
 
-        if not os.path.exists("Histograms"):
-            os.mkdir("Histograms")
+            if not os.path.exists("Histograms"):
+                os.mkdir("Histograms")
 
-        hist_path = f'Histograms\{tetra_name}.npy'
-        np.save(hist_path, hist)
-
-        data = {"name": tetra_name, "path": img_path, "hist_path": hist_path}
-        df = pd.DataFrame(data, index=[0])
-        df.to_csv(DATABASE_FILE, index=False)
-        print(f'\nThanks! Database created and saved in {DATABASE_FILE}.')
-    else:
-        df = pd.read_csv(DATABASE_FILE)
-        hist = make_hist(img_path)
-        match = False
-
-        for _, row in df.iterrows():
-            hist_i = np.load(row['hist_path'])
-            comp1 = cv.compareHist(hist, hist_i, method=1)
-            comp3 = cv.compareHist(hist, hist_i, method=3)
-
-            if comp1 < 100 and comp3 < 0.5:
-                name = row['name']
-                print(f'\nThat is a \033[1;34m{name}\033[0m tetrabrick')
-                match = True
-
-        if not match:
-            print("\nThere is no match for that tetrabrick...")
-            tetra_name = input("Please, introduce the name of the new tetrabrick to register: ")
             hist_path = f'Histograms\{tetra_name}.npy'
             np.save(hist_path, hist)
-            new_row = {'name': tetra_name, 'path': img_path, 'hist_path': hist_path}
-            df = df.append(new_row, ignore_index=True)
-            df = df.sort_values(by='name', ascending=True)
-            df.to_csv(DATABASE_FILE, index=False)
-            print(f'{tetra_name} saved in the database {DATABASE_FILE}')
 
+            data = {"name": tetra_name, "path": img_path, "hist_path": hist_path}
+            df = pd.DataFrame(data, index=[0])
+            df.to_csv(DATABASE_FILE, index=False)
+            print(f'\nThanks! Database created and saved in {DATABASE_FILE}.')
+        else:
+            df = pd.read_csv(DATABASE_FILE)
+            hist = make_hist(img_path)
+            match = False
+
+            for _, row in df.iterrows():
+                hist_i = np.load(row['hist_path'])
+                comp1 = cv.compareHist(hist, hist_i, method=1)
+                comp3 = cv.compareHist(hist, hist_i, method=3)
+
+                if comp1 < 100 and comp3 < 0.5:
+                    name = row['name']
+                    print(f'\nThat is a \033[1;34m{name}\033[0m tetrabrick')
+                    match = True
+
+            if not match:
+                print("\nThere is no match for that tetrabrick...")
+                tetra_name = input("Please, introduce the name of the new tetrabrick to register: ")
+                hist_path = f'Histograms\{tetra_name}.npy'
+                np.save(hist_path, hist)
+                new_row = {'name': tetra_name, 'path': img_path, 'hist_path': hist_path}
+                df = df.append(new_row, ignore_index=True)
+                df = df.sort_values(by='name', ascending=True)
+                df.to_csv(DATABASE_FILE, index=False)
+                print(f'{tetra_name} saved in the database {DATABASE_FILE}')
+    else:
+        print(f'\nFile \033[1;31m{img_path}\033[0m not found.')
 
 def run_program2(directory):
     try:
@@ -339,6 +341,12 @@ def run_program2(directory):
 def main():
     try:
         debug = False
+
+        # Create a tkinter root window (hidden), para que salga la ventana de elegir carpeta encima de todo
+        root = tk.Tk()
+        root.attributes("-topmost", True)
+        root.withdraw()
+
         print("\n-----------------------------------------------"
             "\n       WELCOME TO TETRABRICK DETECTOR"
             "\n-----------------------------------------------")
@@ -376,6 +384,7 @@ def main():
                     run_program(img_path)
                 else:
                     run_program(img_path)
+        root.destroy()
     except Exception as e:
         print("Error:", e)
 
