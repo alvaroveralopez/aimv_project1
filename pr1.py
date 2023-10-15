@@ -4,6 +4,7 @@ import numpy as np
 import pandas as pd
 from matplotlib import pyplot as plt
 import sys
+import math
 
 import warnings
 import matplotlib.cbook
@@ -32,60 +33,6 @@ channels = [0, 2] # Use the 0-th and 1-st channels
 # --------------------------------------------------------------------------------------------
 # |                                      FUNCTIONS                                           |
 # --------------------------------------------------------------------------------------------
-def cut_black_areas(imagen):
-    img_gray = cv.cvtColor(imagen, cv.COLOR_BGR2GRAY)
-    threshold_value = 10
-    _, binary_mask = cv.threshold(img_gray, threshold_value, 255, cv.THRESH_BINARY)
-
-    # Encontrar el contorno más grande
-    contours, _ = cv.findContours(binary_mask, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE)
-
-    largest_area = 0
-    largest_contour = None
-
-    for contour in contours:
-        area = cv.contourArea(contour)
-        if area > largest_area:
-            largest_area = area
-            largest_contour = contour
-
-    if largest_contour is not None:
-        # Calcular el ángulo de rotación del rectángulo delimitador
-        rect = cv.minAreaRect(largest_contour)
-        angle = rect[2]
-
-        if angle < -45:
-            angle += 90
-
-        # Rotar la imagen para enderezar el tetrabrick
-        rows, cols, _ = imagen.shape
-        M = cv.getRotationMatrix2D((cols / 2, rows / 2), -angle, 1)
-        rotated_image = cv.warpAffine(imagen, M, (cols, rows))
-
-        # Recortar la imagen rotada original para eliminar las áreas negras
-        rotated_gray = cv.cvtColor(rotated_image, cv.COLOR_BGR2GRAY)
-        _, rotated_binary_mask = cv.threshold(rotated_gray, threshold_value, 255, cv.THRESH_BINARY)
-        rotated_contours, _ = cv.findContours(rotated_binary_mask, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE)
-
-        largest_area = 0
-        largest_contour = None
-
-        for contour in rotated_contours:
-            area = cv.contourArea(contour)
-            if area > largest_area:
-                largest_area = area
-                largest_contour = contour
-
-        if largest_contour is not None:
-            x, y, w, h = cv.boundingRect(largest_contour)
-            imagen_recortada = rotated_image[y:y+h, x:x+w]
-
-            return imagen_recortada
-
-    return None  # Si no se encontraron áreas negras o no se pudo corregir el giro, devuelve None
-
-
-
 def DrawHist_HS(Hist_HS, DisplayName):
 
     bins1 = Hist_HS.shape[0]
@@ -110,6 +57,41 @@ def DrawHist_HS(Hist_HS, DisplayName):
 
     return(0)
 
+def remove_black_areas(image):
+    # Convertir la imagen a escala de grises
+    gray = cv.cvtColor(image, cv.COLOR_BGR2GRAY)
+
+    # Encontrar los contornos en la imagen
+    contours, _ = cv.findContours(gray, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE)
+
+    if contours:
+        # Encontrar el contorno más grande (rectángulo)
+        largest_contour = max(contours, key=cv.contourArea)
+
+        # Encontrar los vértices del rectángulo mínimo
+        rect = cv.minAreaRect(largest_contour)
+
+        # Calcular la matriz de transformación para rotar
+        center, size, angle = rect
+        M = cv.getRotationMatrix2D(center, angle, 1.0)
+
+        # Rotar la imagen
+        rotated_image = cv.warpAffine(image, M, (image.shape[1], image.shape[0]))
+
+        # Obtener el ancho y alto del rectángulo rotado
+        width, height = size
+
+        # Recortar la región del rectángulo rotado
+        x, y = int(center[0] - width / 2), int(center[1] - height / 2)
+        x, y, w, h = int(x), int(y), int(width), int(height)
+
+        cropped_image = rotated_image[y:y+h, x:x+w]
+
+        return cropped_image
+
+    # Si no se encontraron contornos, devolver una copia de la imagen original
+    return image
+
 def make_mask(imagen):
     img_name = os.path.basename(imagen)
     img_name = img_name.split(".")[0]
@@ -117,7 +99,7 @@ def make_mask(imagen):
     img = cv.imread(imagen, cv.IMREAD_GRAYSCALE)
     imgRGB = cv.imread(imagen)
 
-    blur = cv.GaussianBlur(img, (5, 5), 0) # apply blur to grayscale image
+    blur = cv.GaussianBlur(img, (5, 5), 0)  # apply blur to grayscale image
     assert img is not None, "file could not be read, check with os.path.exists()"
 
     edges = cv.Canny(blur, 100, 200)
@@ -126,36 +108,6 @@ def make_mask(imagen):
     erode = cv.erode(dilate, kernel, iterations=5)
 
     final_mask = erode * img
-
-    # Figura ----------------------------------------------------------------------
-    plt.subplot(221)
-    plt.imshow(cv.cvtColor(img, cv.COLOR_BGR2RGB))
-    plt.title('Original Image')
-    plt.axis('off')
-
-    plt.subplot(222)
-    plt.imshow(edges, cmap='gray')
-    plt.title('Edge Image')
-    plt.axis('off')
-
-    plt.subplot(223)
-    plt.imshow(erode, cmap='gray')
-    plt.title('Opening')
-    plt.axis('off')
-
-    plt.subplot(224)
-    plt.imshow(final_mask, cmap='gray')
-    plt.title('Wish image')
-    plt.axis('off')
-
-    plt.suptitle(f'{img_name}', fontsize=16)
-
-    plt.tight_layout()
-    # plt.show(block=False)
-
-    # Esperar a que se presione una tecla
-    # plt.waitforbuttonpress()
-    # ------------------------------------------------------------------------
 
     masked_b = cv.bitwise_and(imgRGB[:, :, 0], erode)
     masked_g = cv.bitwise_and(imgRGB[:, :, 1], erode)
@@ -166,7 +118,7 @@ def make_mask(imagen):
     if not os.path.exists(output_directory):
         os.makedirs(output_directory)
 
-    cropped_img = cut_black_areas(final_img)
+    cropped_img = remove_black_areas(final_img)
     cv.imwrite(f'excImages/{img_name}.png', cropped_img)
 
     # cv.imshow('Final image', final_img)
@@ -244,8 +196,8 @@ def run_program(img_path):
 
         hist = make_hist(img_path)
 
-        if not os.path.exists("../Histograms"):
-            os.mkdir("../Histograms")
+        if not os.path.exists("Histograms"):
+            os.mkdir("Histograms")
 
         hist_path = f'Histograms/{tetra_name}.npy'
         np.save(hist_path, hist)
