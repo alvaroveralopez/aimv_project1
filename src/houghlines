@@ -11,6 +11,7 @@ import tkinter as tk
 from tkinter import filedialog
 import glob
 global edges
+
 import os
 # Global variables (be careful because variables in this list are used in the functions, 
 # so these functions can not be copied to another program as they are here...you would need to modify them)
@@ -18,63 +19,14 @@ import os
 
 window_name = "Edge Map"
 standard_name = "Standard Hough Lines Demo"
-probabilistic_name = "Probabilistic Hough Lines Demo"
 min_threshold = 50
-max_trackbar = 150
-s_trackbar = 0
-p_trackbar = 0
-
-# GLOBAL VARIABLES
-morph_size = 5
-kernel_size = 3
-kernel = np.ones((kernel_size, kernel_size), np.uint8)
-
-
-edgeThresh = 1
-lowThreshold = 30
-max_lowThreshold = 100
-multiplier = 3
-kernel_size = 3
 alpha = 1000
 
 
-
-
-h_bins = 30
-s_bins = 32
-histSize = [h_bins, s_bins]
-# hue varies from 0 to 179, saturation from 0 to 255
-h_ranges = [0, 180]
-s_ranges = [0, 256]
-ranges = h_ranges + s_ranges # concat lists
-# Use the 0-th and 1-st channels
-channels = [0, 2]
-
-#
-# * @function CannyThreshold
-# * @brief Trackbar callback - Canny thresholds input with a ratio 1:3
-#
-
-def CannyThreshold(lowThreshold, a):
-    global edges
-    src_gray = cv.cvtColor(a , cv.COLOR_BGR2GRAY)
-    # Reduce noise with a kernel 5x5
-    blurred = cv.blur(src_gray, (5, 5))
-    # Canny detector
-    edges = cv.Canny(blurred, lowThreshold, lowThreshold*multiplier, kernel_size)
-    Mask = edges/255
-    # Using Canny's output as a mask, we display our result
-    dst = a * (Mask[:,:,None].astype(a.dtype))
-    cv.imshow(window_name, dst)
-
-#
-# @function Standard_Hough
-#
-def Standard_Hough(s_trackbar):
-    standard_hough = cv.cvtColor(edges, cv.COLOR_GRAY2BGR)
-
+def Standard_Hough(edges):
+    standard_hough = cv.cvtColor(edges, cv.COLOR_GRAY2BGR) #make a copy
     # Use Standard Hough Transform
-    s_lines = cv.HoughLines(edges, 1, np.pi / 90, min_threshold + s_trackbar)
+    s_lines = cv.HoughLines(edges, 1, np.pi / 90, min_threshold )
     print(f"{s_lines}")
     
     # Show the result
@@ -91,93 +43,76 @@ def Standard_Hough(s_trackbar):
         print(f"Houghlines: Rho {r}, Theta: {t}, Point1: {pt1}, Point2: {pt2}")
 
     cv.imshow(standard_name, standard_hough)
+    return s_lines
 
-
-
-#
-# @function Probabilistic_Hough
-#
-def Probabilistic_Hough(p_trackbar):
-
-	probabilistic_hough = cv.cvtColor(edges, cv.COLOR_GRAY2BGR)
-
-	# Use Probabilistic Hough Transform
-	p_lines = cv.HoughLinesP(edges, 1, np.pi/90, threshold=min_threshold+ p_trackbar, minLineLength=30, maxLineGap=30)
-
-	# Show the result
-
-	for points in p_lines:
-		pt1 = (points[0][0], points[0][1])
-		pt2 = (points[0][2], points[0][3])
-		cv.line(probabilistic_hough, pt1, pt2, (255, 0, 0), 2)
-		
-	cv.imshow(probabilistic_name, probabilistic_hough)
-
-def DrawHist_HS( Hist_HS, DisplayName):
-
-    bins1 = Hist_HS.shape[0]
-    bins2 = Hist_HS.shape[1]
-    scale = 10
-    hist2DImg = np.zeros((bins1*scale, bins2*scale,3), dtype = np.uint8) # empty image of size bis1xbins2 and scaled to see the 2D histogram better
-    thickness = -1
-    for i in range(bins1):
-        for j in range(bins2):
-            binVal = np.uint8(Hist_HS[i, j]*255)
-            # converting the histogram value to Intensity and using the corresponding H-S we can recover the RGB and visualize the histogram in color
-            H = np.uint8(i/bins1*180 + h_ranges[0])
-            S = np.uint8(j/bins2*255 + s_ranges[0])
-            BGR = cv.cvtColor(np.uint8([[[H,binVal,S]]]), cv.COLOR_HLS2BGR)
-            color = (round(BGR[0,0,0])*10, round(BGR[0,0,1])*10, round(BGR[0,0,2])*10) # I am multiplying by an arbitrary value to visualize colors better, because the weight of the black pixels is too high in the histogram
-            start_point = (i*scale, j*scale)
-            end_point = ((i+1)*scale, (j+1)*scale)
-            hist2DImg = cv.rectangle(hist2DImg, start_point, end_point, color, thickness)
-
-    y=np.flipud(hist2DImg) #turning upside down the image to have (0,0) in the lower left corner
-    cv.imshow(DisplayName,y)
-
-    return(0)
 
 #########################
 ###  Main program #######
 bgModel_RGB = cv.createBackgroundSubtractorMOG2()
-imgRGB = cv.imread('tcol1.bmp') 
+imgRGB = cv.imread('C:/Users/Usuario/Desktop/AIMV/Project I/Basic Bricks/tcol1.bmp')
+
+#print(f"\n\n\nimRGB: {imgRGB}\n\n\n")
 edges = cv.cvtColor(imgRGB, cv.COLOR_BGR2GRAY)
 edges1 = cv.GaussianBlur(edges, (31, 31), 4)
 edges = cv.Canny(edges1, 40, 50, 3)
 cv.imshow('frame', imgRGB)  # Mostrar los fotogramas del video
 cv.waitKey(0)
 cv.destroyAllWindows()
-cv.imshow('edges', edges1)  # Mostrar los bordes del video
-cv.waitKey(0)
-cv.destroyAllWindows()
-
 cv.imshow('edges', edges)  # Mostrar los bordes del video
 cv.waitKey(0)
 cv.destroyAllWindows()
 a=edges
-Standard_Hough(1)
+lines=Standard_Hough(edges)
 print("holi")
 cv.waitKey(0)
 
+# Inicializar listas para almacenar las líneas paralelas y opuestas
+parallel_lines = []
+opposite_lines = []
+
+# Tolerancia para considerar ángulos cercanos a 180 grados
+angle_tolerance = 30
+
+# Identificar líneas paralelas y opuestas
+for i in range(len(lines)):
+    for j in range(i + 1, len(lines)):
+        rho1, theta1 = lines[i][0]
+        rho2, theta2 = lines[j][0]
+        angle1_degrees = np.degrees(theta1)
+        angle2_degrees = np.degrees(theta2)
+
+        # Calcular la diferencia de ángulo
+        angle_difference = abs(angle1_degrees - angle2_degrees)
+
+        if abs(angle_difference - 180) < angle_tolerance:
+            # Las líneas son opuestas
+            opposite_lines.append((rho1, theta1, rho2, theta2))
+        elif abs(angle_difference) < angle_tolerance:
+            # Las líneas son paralelas
+            parallel_lines.append((rho1, theta1, rho2, theta2))
+
+# Seleccionar dos pares de líneas paralelas y opuestas
+if len(parallel_lines) >= 2 and len(opposite_lines) >= 2:
+    selected_parallel_pairs = parallel_lines[:2]
+    selected_opposite_pairs = opposite_lines[:2]
+
+    # Dibujar los rectángulos utilizando los pares de líneas seleccionados
+    for pair in selected_parallel_pairs + selected_opposite_pairs:
+        rho1, theta1, rho2, theta2 = pair
+        a1 = np.cos(theta1)
+        b1 = np.sin(theta1)
+        x1 = a1 * rho1
+        y1 = b1 * rho1
+        a2 = np.cos(theta2)
+        b2 = np.sin(theta2)
+        x2 = a2 * rho2
+        y2 = b2 * rho2
+
+        # Aquí puedes utilizar los puntos (x1, y1) y (x2, y2) para dibujar los rectángulos
+
+# Mostrar la imagen con los rectángulos
+cv.imshow('Rectángulos', imgRGB)
+cv.waitKey(0)
+cv.destroyAllWindows()
 
 
-
-
-
-
-# assert img is not None, "file could not be read, check with os.path.exists()"
-# edges = cv.Canny(blur,100,200)
-# kernel19 = np.ones((19,19),np.uint8)
-#  #https://docs.opencv.org/4.x/d9/d61/tutorial_py_morphological_ops.html
-# dilate = cv.dilate(edges,kernel19,iterations = 5)
-# erode = cv.erode(dilate,kernel19,iterations = 5)
-# final_mask=erode*img
-# # Crea una figura de Matplotlib con una cuadrícula de 2x2 y muestra cada imagen en una ubicación específica
-# plt.subplot(211)
-# plt.imshow(cv.cvtColor(img, cv.COLOR_BGR2RGB))
-# plt.title('Original Image')
-# plt.axis('off')
-# plt.subplot(212)
-# plt.imshow(edges, cmap='gray')
-# plt.title('Edge Image')
-# plt.axis('off')
